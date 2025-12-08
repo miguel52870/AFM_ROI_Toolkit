@@ -1,0 +1,10 @@
+# data.yaml
+# Número de clases: 1 
+nc: 1
+
+# Nombres de las clases
+names: ['Target_Area'] 
+
+# Rutas ABSOLUTAS a los datos de entrenamiento y validacion
+train: C:/Users/migue/Desktop/training_afm/data/images/train
+val: C:/Users/migue/Desktop/training_afm/data/images/val
