@@ -16,7 +16,7 @@ if __name__ == '__main__':
         'data': 'scripts/data.yaml',     # Archivo de configuración del dataset
         'epochs': 100,                   # Número de épocas
         'imgsz': (256, 128),             # Tamaño de las imágenes
-        'name': 'Target_Area',           # Nombre de la carpeta de resultados (modificar para entrenamientos con modelos ya entrenados)
+        'name': 'Target_Area_prep',           # Nombre de la carpeta de resultados (modificar para entrenamientos con modelos ya entrenados)
         'project': 'runs/detect',        # CREACIÓN local EN ./runs/detect/
         'device': '0',                   # Usar CPU (cambiar por '0' si tienes GPU)
         'workers': 10,                   # Número de hilos

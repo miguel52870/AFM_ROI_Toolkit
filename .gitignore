@@ -1,0 +1,10 @@
+# Ignorar entornos virtuales y carpetas de resultados
+env/
+Resultados/
+runs/
+
+# Ignorar todos los archivos dentro de la carpeta data
+data/**/*
+
+# Permitir archivos .gitkeep para mantener la estructura de carpetas
+!data/**/.gitkeep

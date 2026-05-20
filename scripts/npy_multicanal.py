@@ -1,145 +1,210 @@
-from ultralytics import YOLO
+"""
+npy_multicanal.py — Paso 2b del pipeline de recorte alineado
+Tesis: Evolución de Dominios Ferroeléctricos con Deep Learning
+
+Lee: Resultados/registro/coordenadas_registro.csv  (generado por calcular_registro.py)
+Genera recortes NPY centrados en la estructura para:
+  - Canal 1, 2, 3 preprocesados  → Resultados/numpy_recortes/canal_X/
+  - C2 diff                      → Resultados/numpy_recortes/diff/
+  - C3 mask                      → Resultados/numpy_recortes/mask/
+
+Soporta recortes cuadrados y rectangulares mediante CROP_MODE.
+
+REQUISITO: correr calcular_registro.py antes que este script.
+"""
+
 import numpy as np
 import os
 import sys
-from scipy.stats import pearsonr
-from pathlib import Path
+import csv
 
 # =================================================================
-# 1. CONFIGURACIÓN DE RUTAS Y PARÁMETROS GLOBALES
+# 1. CONFIGURACIÓN
 # =================================================================
 
-# --- RUTAS PRINCIPALES ---
-# Ruta al modelo entrenado
-MODEL_PATH = 'runs/detect/Target_Area/weights/best.pt'
+# Carpeta con los NPYs preprocesados (_prep.npy)
+NUMPY_DIR       = 'C:/Users/migue/Desktop/training_afm/data/numpy_arrays/'
 
-# Carpeta que contiene las IMÁGENES PNG del Canal 1 (Fuente para YOLO)
-IMAGE_DIR_CANAL1 = 'C:/Users/migue/Desktop/training_afm/data/images/Test'
+# Carpetas con NPYs de diff y mask
+DIFF_NPY_DIR    = 'C:/Users/migue/Desktop/training_afm/data/diff/npy'
+MASK_NPY_DIR    = 'C:/Users/migue/Desktop/training_afm/data/mask/npy'
 
-# Carpeta que contiene los ARRAYS NUMPY (.npy) del Canal 1 (Para Recortar)
-NUMPY_DIR = 'C:/Users/migue/Desktop/training_afm/data/numpy_arrays/'
+# CSV generado por calcular_registro.py
+INPUT_CSV       = 'C:/Users/migue/Desktop/training_afm/Resultados/registro/coordenadas_registro.csv'
 
-# Carpeta base donde se guardarán los arrays NumPy recortados
-OUTPUT_NUMPY_DIR_BASE = 'C:/Users/migue/Desktop/training_afm/Resultados/numpy_recortes'
-# Subcarpetas de salida por canal
-OUTPUT_NUMPY_DIR_CANAL1 = os.path.join(OUTPUT_NUMPY_DIR_BASE, 'canal_1')
-OUTPUT_NUMPY_DIR_CANAL2 = os.path.join(OUTPUT_NUMPY_DIR_BASE, 'canal_2')
-OUTPUT_NUMPY_DIR_CANAL3 = os.path.join(OUTPUT_NUMPY_DIR_BASE, 'canal_3')
+# Carpetas de salida
+OUTPUT_BASE_DIR = 'C:/Users/migue/Desktop/training_afm/Resultados/numpy_recortes'
+OUTPUT_DIR_C1   = os.path.join(OUTPUT_BASE_DIR, 'canal_1')
+OUTPUT_DIR_C2   = os.path.join(OUTPUT_BASE_DIR, 'canal_2')
+OUTPUT_DIR_C3   = os.path.join(OUTPUT_BASE_DIR, 'canal_3')
+OUTPUT_DIR_DIFF = os.path.join(OUTPUT_BASE_DIR, 'diff')
+OUTPUT_DIR_MASK = os.path.join(OUTPUT_BASE_DIR, 'mask')
 
-# Parámetros de Recorte y Detección
-CROP_SIZE_PX = 80
-CONFIDENCE_THRESHOLD = 0.85
-#CROP_WIDTH_PX = 80      # utilizar para imagenes rectangulares
-#CROP_HEIGHT_PX = 30     # utilizar para imagenes rectangulares
-IMG_WIDTH = 256
-IMG_HEIGHT = 128
+# --- MODO DE RECORTE ---
+# 'cuadrado'    → usa CROP_SIZE para ancho y alto
+# 'rectangular' → usa CROP_WIDTH y CROP_HEIGHT de forma independiente
+CROP_MODE   = 'cuadrado'
+
+# Parámetros cuadrado
+CROP_SIZE   = 80
+
+# Parámetros rectangular (solo se usan si CROP_MODE = 'rectangular')
+# IMPORTANTE: ambos valores deben ser divisibles por 32 para compatibilidad
+# con los modelos U-Net (EfficientNet-B0 hace downsampling ×32)
+# Ejemplos válidos: 32, 64, 96, 128 / 32, 64, 96
+CROP_WIDTH  = 80    # ancho del recorte en px (eje X)
+CROP_HEIGHT = 64    # alto del recorte en px  (eje Y)
+
+FILE_PREFIX = 'bifeo_training'
+IMG_WIDTH   = 256
+IMG_HEIGHT  = 128
 
 # =================================================================
 # 2. INICIALIZACIÓN
 # =================================================================
 
-# Asegurar que las carpetas de salida existan
-os.makedirs(OUTPUT_NUMPY_DIR_CANAL1, exist_ok=True)
-os.makedirs(OUTPUT_NUMPY_DIR_CANAL2, exist_ok=True)
-os.makedirs(OUTPUT_NUMPY_DIR_CANAL3, exist_ok=True)
+for d in [OUTPUT_DIR_C1, OUTPUT_DIR_C2, OUTPUT_DIR_C3,
+          OUTPUT_DIR_DIFF, OUTPUT_DIR_MASK]:
+    os.makedirs(d, exist_ok=True)
 
-try:
-    # Cargar el modelo entrenado
-    model = YOLO(MODEL_PATH)
-except (FileNotFoundError, ImportError, RuntimeError) as e:
-    print(f"ERROR: No se pudo cargar el modelo en la ruta {MODEL_PATH}. {e}")
-    sys.exit()
+if CROP_MODE not in ('cuadrado', 'rectangular'):
+    print(f"ERROR: CROP_MODE='{CROP_MODE}' no válido. Usar 'cuadrado' o 'rectangular'.")
+    sys.exit(1)
 
-# La fuente de procesamiento ahora son las imágenes PNG
-print(f"Iniciando procesamiento de recorte multi-canal (Fuente PNG) en: {IMAGE_DIR_CANAL1}\n")
+if not os.path.exists(INPUT_CSV):
+    print(f"ERROR: No se encontró el CSV de registro: {INPUT_CSV}")
+    print("       Corre primero calcular_registro.py")
+    sys.exit(1)
+
+# Calcular half según el modo seleccionado
+if CROP_MODE == 'cuadrado':
+    half_w = CROP_SIZE // 2
+    half_h = CROP_SIZE // 2
+    crop_label = f"{CROP_SIZE}px"
+else:
+    half_w = CROP_WIDTH  // 2
+    half_h = CROP_HEIGHT // 2
+    crop_label = f"{CROP_WIDTH}x{CROP_HEIGHT}px"
+    if CROP_WIDTH % 32 != 0 or CROP_HEIGHT % 32 != 0:
+        print(f"ADVERTENCIA: CROP_WIDTH={CROP_WIDTH} o CROP_HEIGHT={CROP_HEIGHT} "
+              f"no son divisibles por 32.")
+        print(f"  Los modelos U-Net requieren dimensiones divisibles por 32.")
+        print(f"  Valores recomendados: 32, 64, 96, 128...\n")
 
 # =================================================================
-# 3. PROCESAMIENTO POR LOTE
+# 3. LEER CSV DE REGISTRO
 # =================================================================
 
-# Buscamos los archivos .png del Canal 1 (Fuente de detección)
-canal1_png_files = sorted([f for f in os.listdir(IMAGE_DIR_CANAL1) if f.endswith('_Canal_1.png')])
-total_files = len(canal1_png_files)
-processed_counts = {"canal_1": 0, "canal_2": 0, "canal_3": 0}
-processed_arrays_paths = {"canal_1": [], "canal_2": [], "canal_3": []}
+registro = {}
+with open(INPUT_CSV, 'r', encoding='utf-8') as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        if row['center_x'] and row['center_y']:
+            registro[int(row['frame'])] = {
+                'cx': int(row['center_x']),
+                'cy': int(row['center_y']),
+            }
 
-for filename_canal1_png in canal1_png_files:
+print(f"Registro cargado  : {len(registro)} frames")
+print(f"Modo de recorte   : {CROP_MODE}")
+print(f"Tamaño de recorte : {crop_label}\n")
 
-    # 3.1. Definir los Nombres de Archivo Pares y Rutas de Entrada
-    base_name = filename_canal1_png.replace('_Canal_1.png', '')
+# =================================================================
+# 4. PROCESAMIENTO POR FRAME
+# =================================================================
 
-    # Rutas para la Detección (PNG)
-    path_canal1_png = os.path.join(IMAGE_DIR_CANAL1, filename_canal1_png)
+processed = 0
+failed    = 0
 
-    # Rutas para el Recorte (NumPy)
-    path_canal1_npy = os.path.join(NUMPY_DIR, base_name + '_Canal_1.npy')
-    path_canal2_npy = os.path.join(NUMPY_DIR, base_name + '_Canal_2.npy')
-    path_canal3_npy = os.path.join(NUMPY_DIR, base_name + '_Canal_3.npy')
+for frame, reg in sorted(registro.items()):
 
-    # Verificamos que el archivo PNG de detección exista
-    if not os.path.exists(path_canal1_png):
-        print(f"ERROR: No se encontró la fuente PNG {path_canal1_png}. Saltando.")
-        continue
+    cx = reg['cx']
+    cy = reg['cy']
 
-    # 3.2. Detección en la Imagen PNG (Fuente directa)
-    results = model.predict(source=path_canal1_png, save=False, conf=CONFIDENCE_THRESHOLD, verbose=False, imgsz=IMG_WIDTH)
+    # Calcular ROI centrado en la estructura
+    x_min = max(0, cx - half_w)
+    x_max = min(IMG_WIDTH,  cx + half_w)
+    y_min = max(0, cy - half_h)
+    y_max = min(IMG_HEIGHT, cy + half_h)
 
-    # 3.3. Extracción de Coordenadas
-    if results and len(results[0].boxes) > 0:
+    # --- Canales prep (C1, C2, C3) ---
+    canales_prep = [
+        (os.path.join(NUMPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_1_prep.npy"), OUTPUT_DIR_C1, 1),
+        (os.path.join(NUMPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_2_prep.npy"), OUTPUT_DIR_C2, 2),
+        (os.path.join(NUMPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_3_prep.npy"), OUTPUT_DIR_C3, 3),
+    ]
 
-        # Tomamos la primera detección (única etiqueta: Target_Area o center_anchor)
-        box = results[0].boxes[0]
-        coords_px = box.xywh[0]
+    # --- Diff ---
+    diff_path = os.path.join(DIFF_NPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_2_diff.npy")
 
-        center_x = int(coords_px[0].item())
-        center_y = int(coords_px[1].item())
-        # Cálculo del half-crop
-        half_crop = CROP_SIZE_PX // 2
+    # --- Mask ---
+    mask_path = os.path.join(MASK_NPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_3_mask.npy")
 
-        # 3.4. Calcular el Área de Recorte Fija
-        x_min = max(0, center_x - half_crop)
-        y_min = max(0, center_y - half_crop)
-        x_max = min(IMG_WIDTH, center_x + half_crop)
-        y_max = min(IMG_HEIGHT, center_y + half_crop)
+    ok = 0
+    errores = []
 
-        # 3.5. Recortar y Guardar Canal 1, Canal 2 y Canal 3 (NumPy)
+    # Recortar canales prep
+    for src_path, out_dir, canal_num in canales_prep:
+        if not os.path.exists(src_path):
+            errores.append(os.path.basename(src_path))
+            continue
+        try:
+            arr     = np.load(src_path)
+            cropped = arr[y_min:y_max, x_min:x_max]
+            base    = os.path.splitext(os.path.basename(src_path))[0]
+            np.save(os.path.join(out_dir, f"{base}_recorte_{crop_label}.npy"), cropped)
+            ok += 1
+        except (IOError, OSError, ValueError) as e:
+            errores.append(f"error_C{canal_num}:{e}")
 
-        # Definir los canales a procesar y sus rutas de entrada/salida
-        canales_a_procesar = [
-            (path_canal1_npy, OUTPUT_NUMPY_DIR_CANAL1, 1), # Canal 1 (Fuente)
-            (path_canal2_npy, OUTPUT_NUMPY_DIR_CANAL2, 2), # Canal 2 (Análisis)
-            (path_canal3_npy, OUTPUT_NUMPY_DIR_CANAL3, 3)  # Canal 3 (Análisis)
-        ]
-
-        for path_npy, output_dir, canal_num in canales_a_procesar:
-
-            # Verificación de existencia del archivo NumPy
-            if not os.path.exists(path_npy):
-                continue
-
-            try:
-                # Cargar el array NumPy original
-                array_canal = np.load(path_npy)
-
-                # Aplicar Recorte: [filas (Y), columnas (X)]
-                cropped_canal = array_canal[y_min:y_max, x_min:x_max]
-
-                # Guardar el resultado
-                out_filename = os.path.join(output_dir, f"{base_name}_recorte_{CROP_SIZE_PX}px_Canal_{canal_num}.npy")
-                np.save(out_filename, cropped_canal)
-
-                processed_counts[f'canal_{canal_num}'] += 1
-
-                print(f"Recorte exitoso Canal {canal_num}: {os.path.basename(out_filename)} (Centro: {center_x}, {center_y})")
-            except (IOError, OSError, ValueError) as e:
-                print(f"AVISO: No se pudo recortar/guardar Canal {canal_num} para {base_name}: {e}")
-
+    # Recortar diff
+    if os.path.exists(diff_path):
+        try:
+            arr_diff     = np.load(diff_path)
+            cropped_diff = arr_diff[y_min:y_max, x_min:x_max]
+            base_diff    = os.path.splitext(os.path.basename(diff_path))[0]
+            np.save(os.path.join(OUTPUT_DIR_DIFF,
+                    f"{base_diff}_recorte_{crop_label}.npy"), cropped_diff)
+            ok += 1
+        except (IOError, OSError, ValueError) as e:
+            errores.append(f"error_diff:{e}")
     else:
-        print(f"FALLO en Detección para la imagen PNG: {filename_canal1_png}. No se encontró Target_Area.")
+        if frame != 21:
+            errores.append(f"sin_diff_frame_{frame}")
 
-print("\n--- Resumen del Lote Multi-Canal ---")
-print(f"Total de archivos PNG examinados: {total_files}")
-print(f"Recortes guardados Canal 1: {processed_counts['canal_1']}")
-print(f"Recortes guardados Canal 2: {processed_counts['canal_2']}")
-print(f"Recortes guardados Canal 3: {processed_counts['canal_3']}")
-print(f"Carpetas de salida (base): {OUTPUT_NUMPY_DIR_BASE}")
+    # Recortar mask
+    if os.path.exists(mask_path):
+        try:
+            arr_mask     = np.load(mask_path)
+            cropped_mask = arr_mask[y_min:y_max, x_min:x_max]
+            base_mask    = os.path.splitext(os.path.basename(mask_path))[0]
+            np.save(os.path.join(OUTPUT_DIR_MASK,
+                    f"{base_mask}_recorte_{crop_label}.npy"), cropped_mask)
+            ok += 1
+        except (IOError, OSError, ValueError) as e:
+            errores.append(f"error_mask:{e}")
+    else:
+        errores.append(f"sin_mask_frame_{frame}")
+
+    if errores:
+        print(f"Frame {frame}: {ok} recortes  ⚠ {errores}")
+        failed += 1
+    else:
+        print(f"Frame {frame}: ✓  centro=({cx}, {cy})  "
+              f"ROI=[{y_min}:{y_max}, {x_min}:{x_max}]  {crop_label}")
+        processed += 1
+
+# =================================================================
+# 5. RESUMEN
+# =================================================================
+
+print(f"\n{'─'*50}")
+print(f"Frames completos : {processed}")
+print(f"Frames con aviso : {failed}")
+print(f"Modo             : {CROP_MODE} ({crop_label})")
+print(f"NPYs guardados en:")
+print(f"  Canal 1 → {OUTPUT_DIR_C1}")
+print(f"  Canal 2 → {OUTPUT_DIR_C2}")
+print(f"  Canal 3 → {OUTPUT_DIR_C3}")
+print(f"  Diff    → {OUTPUT_DIR_DIFF}")
+print(f"  Mask    → {OUTPUT_DIR_MASK}")
