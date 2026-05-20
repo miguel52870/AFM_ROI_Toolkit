@@ -6,7 +6,7 @@ Se inserta entre el módulo de preprocesamiento (`AFM_Preprocessing`) y el entre
 
 **Tesis:** *Estudio de la Evolución de los Dominios Ferroeléctricos al Switching
 Usando Deep Learning para Aplicación de Memorias de Estado Sólido*
-**Instituto Tecnológico de Querétaro — Maestría en Ciencias en Ingeniería**
+**Instituto Tecnológico de Querétaro — Maestría en Ciencia de Datos**
 **Autor:** Miguel Angel Castro Medina
 
 ---
