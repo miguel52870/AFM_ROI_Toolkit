@@ -22,18 +22,25 @@ import csv
 # 1. CONFIGURACIÓN
 # =================================================================
 
+# =================================================================
+# RAIZ DEL PROYECTO
+# =================================================================
+# Unica ruta que hay que cambiar al mover el proyecto o al usarlo en
+# otra maquina. Todo lo demas se deriva de aqui.
+BASE_DIR = 'C:/Users/migue/Desktop/training_afm'
+
 # Carpeta con los NPYs preprocesados (_prep.npy)
-NUMPY_DIR       = 'C:/Users/migue/Desktop/training_afm/data/numpy_arrays/'
+NUMPY_DIR       = f'{BASE_DIR}/data/numpy_arrays/'
 
 # Carpetas con NPYs de diff y mask
-DIFF_NPY_DIR    = 'C:/Users/migue/Desktop/training_afm/data/diff/npy'
-MASK_NPY_DIR    = 'C:/Users/migue/Desktop/training_afm/data/mask/npy'
+DIFF_NPY_DIR    = f'{BASE_DIR}/data/diff/npy'
+MASK_NPY_DIR    = f'{BASE_DIR}/data/mask/npy'
 
 # CSV generado por calcular_registro.py
-INPUT_CSV       = 'C:/Users/migue/Desktop/training_afm/Resultados/registro/coordenadas_registro.csv'
+INPUT_CSV       = f'{BASE_DIR}/Resultados/registro/coordenadas_registro.csv'
 
 # Carpetas de salida
-OUTPUT_BASE_DIR = 'C:/Users/migue/Desktop/training_afm/Resultados/numpy_recortes'
+OUTPUT_BASE_DIR = f'{BASE_DIR}/Resultados/numpy_recortes'
 OUTPUT_DIR_C1   = os.path.join(OUTPUT_BASE_DIR, 'canal_1')
 OUTPUT_DIR_C2   = os.path.join(OUTPUT_BASE_DIR, 'canal_2')
 OUTPUT_DIR_C3   = os.path.join(OUTPUT_BASE_DIR, 'canal_3')

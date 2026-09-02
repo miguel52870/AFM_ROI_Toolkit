@@ -7,11 +7,17 @@ de la estructura ferroeléctrica. Aplica corrección de trayectoria según
 el modo seleccionado.
 
 Modos disponibles (SMOOTHING_MODE):
-  'outlier'    → preserva valores YOLO correctos, solo interpola frames anómalos
-  'moving_avg' → suaviza toda la serie con media móvil centrada
+  'outlier'    → preserva valores YOLO correctos, solo corrige frames que
+                 se apartan del promedio de sus vecinos
+  'moving_avg' → suaviza toda la serie con media movil centrada
 
 Genera: Resultados/registro/coordenadas_registro.csv
-  Columnas: frame, center_x, center_y, conf, status
+  Columnas: frame, center_x, center_y, center_x_raw, center_y_raw, conf, status
+    center_x / center_y     -> coordenadas corregidas (enteras). Son las que
+                               consumen batch_multicanal.py y npy_multicanal.py
+    center_x_raw / _y_raw   -> float original de YOLO, sin truncar ni corregir.
+                               Solo registro, para comparar cruda vs. suavizada
+  status: 'ok' | 'suavizado' | 'fallo_deteccion' | 'sin_png'
 
 Uso:
   1. Correr este script PRIMERO
@@ -28,13 +34,20 @@ import csv
 # 1. CONFIGURACIÓN
 # =================================================================
 
+# =================================================================
+# RAIZ DEL PROYECTO
+# =================================================================
+# Unica ruta que hay que cambiar al mover el proyecto o al usarlo en
+# otra maquina. Todo lo demas se deriva de aqui.
+BASE_DIR = 'C:/Users/migue/Desktop/training_afm'
+
 MODEL_PATH = 'runs/detect/Target_Area_prep/weights/best.pt'
 
 # Imágenes PNG Canal 1 preprocesadas (fuente para YOLO)
-IMAGE_DIR  = 'C:/Users/migue/Desktop/training_afm/data/images/Test'
+IMAGE_DIR  = f'{BASE_DIR}/data/images/Test'
 
 # Salida del CSV de registro
-OUTPUT_DIR = 'C:/Users/migue/Desktop/training_afm/Resultados/registro'
+OUTPUT_DIR = f'{BASE_DIR}/Resultados/registro'
 OUTPUT_CSV = os.path.join(OUTPUT_DIR, 'coordenadas_registro.csv')
 
 # Parámetros de detección YOLO
@@ -115,7 +128,9 @@ for frame in range(FRAME_START, FRAME_END + 1):
 
     if not os.path.exists(png_path):
         print(f"{frame:<8} {'—':>10} {'—':>10} {'—':>8} sin_png")
-        detecciones[frame] = {'cx': None, 'cy': None, 'conf': None, 'status': 'sin_png'}
+        detecciones[frame] = {'cx': None, 'cy': None,
+                              'cx_raw': None, 'cy_raw': None,
+                              'conf': None, 'status': 'sin_png'}
         continue
 
     results = model.predict(source=png_path, save=False, conf=CONFIDENCE,
@@ -124,16 +139,27 @@ for frame in range(FRAME_START, FRAME_END + 1):
     if results and len(results[0].boxes) > 0:
         box    = results[0].boxes[0]
         coords = box.xywh[0]
-        cx     = int(coords[0].item())
-        cy     = int(coords[1].item())
+        # YOLO devuelve float. Se conserva el valor subpixel porque la deriva
+        # del escaner es continua: truncar a entero la convierte en una
+        # escalera de saltos de 1 px que no corresponde a la trayectoria real.
+        # El entero se mantiene como valor operativo: el recorte necesita
+        # indices enteros y los scripts posteriores leen center_x/center_y.
+        cx_raw = float(coords[0].item())
+        cy_raw = float(coords[1].item())
+        cx     = int(cx_raw)
+        cy     = int(cy_raw)
         conf   = round(float(box.conf[0].item()), 4)
 
         print(f"{frame:<8} {cx:>10} {cy:>10} {conf:>8.4f} ok")
-        detecciones[frame] = {'cx': cx, 'cy': cy, 'conf': conf, 'status': 'ok'}
+        detecciones[frame] = {'cx': cx, 'cy': cy,
+                              'cx_raw': cx_raw, 'cy_raw': cy_raw,
+                              'conf': conf, 'status': 'ok'}
 
     else:
         print(f"{frame:<8} {'—':>10} {'—':>10} {'—':>8} fallo_deteccion")
-        detecciones[frame] = {'cx': None, 'cy': None, 'conf': None, 'status': 'fallo_deteccion'}
+        detecciones[frame] = {'cx': None, 'cy': None,
+                              'cx_raw': None, 'cy_raw': None,
+                              'conf': None, 'status': 'fallo_deteccion'}
 
 frames_sorted = sorted(detecciones.keys())
 
@@ -158,8 +184,10 @@ def interpolate(prev_vals, next_vals, current_val):
 
 if SMOOTHING_MODE == 'outlier':
 
-    print(f"\nDetectando outliers (umbral_x={OUTLIER_THRESHOLD_X} px, "
-          f"umbral_y={OUTLIER_THRESHOLD_Y} px, ventana={WINDOW})...\n")
+    print(f"\nSuavizando cuantizacion (umbral_x={OUTLIER_THRESHOLD_X} px, "
+          f"umbral_y={OUTLIER_THRESHOLD_Y} px, ventana={WINDOW})...")
+    print("  Con umbrales por debajo de 1 px sobre coordenadas enteras, lo que")
+    print("  se corrige es el escalonado del truncamiento, no fallos de YOLO.\n")
 
     outliers_found = 0
 
@@ -191,7 +219,7 @@ if SMOOTHING_MODE == 'outlier':
             cx_new = interpolate(prev_cx, next_cx, cx_orig) if outlier_x else cx_orig
             cy_new = interpolate(prev_cy, next_cy, cy_orig) if outlier_y else cy_orig
 
-            print(f"  OUTLIER frame {frame}:")
+            print(f"  SUAVIZADO frame {frame}:")
             if outlier_x:
                 print(f"    center_x: {cx_orig} → {cx_new} px  (ref. vecinos: {avg_cx:.1f} px)")
             if outlier_y:
@@ -199,12 +227,12 @@ if SMOOTHING_MODE == 'outlier':
 
             detecciones[frame]['cx']     = cx_new
             detecciones[frame]['cy']     = cy_new
-            detecciones[frame]['status'] = 'interpolado'
+            detecciones[frame]['status'] = 'suavizado'
 
     if outliers_found == 0:
-        print("  Ningún outlier detectado.")
+        print("  Ningun frame requirio suavizado.")
     else:
-        print(f"\n  Total outliers corregidos: {outliers_found}")
+        print(f"\n  Total frames suavizados: {outliers_found}")
 
 # =================================================================
 # 4B. MODO MOVING_AVG — suaviza toda la serie
@@ -259,16 +287,24 @@ fail_count = 0
 
 with open(OUTPUT_CSV, 'w', newline='', encoding='utf-8') as csvfile:
     writer = csv.writer(csvfile)
-    writer.writerow(['frame', 'center_x', 'center_y', 'conf', 'status'])
+    # center_x / center_y son las coordenadas CORREGIDAS que consumen
+    # batch_multicanal.py y npy_multicanal.py. Conservan nombre y posicion.
+    # Las columnas _raw guardan el float original de YOLO, solo como
+    # registro para comparar la serie cruda contra la suavizada.
+    writer.writerow(['frame', 'center_x', 'center_y',
+                     'center_x_raw', 'center_y_raw', 'conf', 'status'])
 
     for frame in frames_sorted:
         d = detecciones[frame]
 
         if d['cx'] is not None:
-            writer.writerow([frame, d['cx'], d['cy'], d['conf'] or '', d['status']])
+            cx_raw = f"{d['cx_raw']:.2f}" if d.get('cx_raw') is not None else ''
+            cy_raw = f"{d['cy_raw']:.2f}" if d.get('cy_raw') is not None else ''
+            writer.writerow([frame, d['cx'], d['cy'],
+                             cx_raw, cy_raw, d['conf'] or '', d['status']])
             ok_count += 1
         else:
-            writer.writerow([frame, '', '', '', d['status']])
+            writer.writerow([frame, '', '', '', '', '', d['status']])
             fail_count += 1
 
 print(f"Frames guardados        : {ok_count}")

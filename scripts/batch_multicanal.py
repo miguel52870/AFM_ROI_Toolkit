@@ -22,18 +22,25 @@ import csv
 # 1. CONFIGURACIÓN
 # =================================================================
 
+# =================================================================
+# RAIZ DEL PROYECTO
+# =================================================================
+# Unica ruta que hay que cambiar al mover el proyecto o al usarlo en
+# otra maquina. Todo lo demas se deriva de aqui.
+BASE_DIR = 'C:/Users/migue/Desktop/training_afm'
+
 # Carpeta con imágenes PNG preprocesadas (_prep)
-IMAGE_DIR       = 'C:/Users/migue/Desktop/training_afm/data/images/Test'
+IMAGE_DIR       = f'{BASE_DIR}/data/images/Test'
 
 # Carpetas con PNGs de diff y mask
-DIFF_PNG_DIR    = 'C:/Users/migue/Desktop/training_afm/data/diff/png'
-MASK_PNG_DIR    = 'C:/Users/migue/Desktop/training_afm/data/mask/png'
+DIFF_PNG_DIR    = f'{BASE_DIR}/data/diff/png'
+MASK_PNG_DIR    = f'{BASE_DIR}/data/mask/png'
 
 # CSV generado por calcular_registro.py
-INPUT_CSV       = 'C:/Users/migue/Desktop/training_afm/Resultados/registro/coordenadas_registro.csv'
+INPUT_CSV       = f'{BASE_DIR}/Resultados/registro/coordenadas_registro.csv'
 
 # Carpetas de salida
-OUTPUT_BASE_DIR = 'C:/Users/migue/Desktop/training_afm/Resultados/3_canales'
+OUTPUT_BASE_DIR = f'{BASE_DIR}/Resultados/3_canales'
 OUTPUT_DIR_C1   = os.path.join(OUTPUT_BASE_DIR, 'canal_1')
 OUTPUT_DIR_C2   = os.path.join(OUTPUT_BASE_DIR, 'canal_2')
 OUTPUT_DIR_C3   = os.path.join(OUTPUT_BASE_DIR, 'canal_3')

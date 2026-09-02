@@ -1,12 +1,22 @@
 """
-grafica_coordenadas.py — Visualización de coordenadas detectadas por YOLO
-con outliers corregidos por interpolación lineal.
+grafica_coordenadas.py — Visualizacion de coordenadas detectadas por YOLO
+con la variacion de deteccion suavizada.
 
 Entrada:  coordenadas_registro.csv  (generado por Calcular_Registro.py)
-          Columnas: frame, center_x, center_y, conf, status
-          status: 'ok' | 'interpolado' | 'suavizado' | 'fallo_deteccion' | 'sin_png'
+          Columnas: frame, center_x, center_y, center_x_raw,
+                    center_y_raw, conf, status
+          status: 'ok' | 'suavizado' | 'fallo_deteccion' | 'sin_png'
+                  ('interpolado' se acepta por compatibilidad con CSV viejos)
 
 Salida:   coordenadas_registro.png  (en la misma carpeta que el CSV)
+
+NOTA sobre grafica_registro_crudo.py
+------------------------------------
+Los paneles 1 y 2 quedan cubiertos por ese script, que grafica las mismas
+series suavizadas ademas de la deteccion cruda y la truncada. El aporte
+propio de esta figura es el panel 3 —el drift acumulado respecto al frame
+inicial— y los insets que situan el recorte de 80 px dentro de la imagen
+completa. Ninguna otra figura da esas dos lecturas.
 
 Uso:
     python grafica_coordenadas.py
@@ -15,8 +25,6 @@ Uso:
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.lines as mlines
-import matplotlib.patches as mpatches
 import numpy as np
 import sys
 
@@ -24,7 +32,14 @@ import sys
 # CONFIGURACIÓN
 # =================================================================
 
-CSV_PATH   = Path(r'C:\Users\migue\Desktop\training_afm\Resultados\registro\coordenadas_registro.csv')
+# =================================================================
+# RAIZ DEL PROYECTO
+# =================================================================
+# Unica ruta que hay que cambiar al mover el proyecto o al usarlo en
+# otra maquina. Todo lo demas se deriva de aqui.
+BASE_DIR = Path(r'C:\Users\migue\Desktop\training_afm')
+
+CSV_PATH   = BASE_DIR / 'Resultados' / 'registro' / 'coordenadas_registro.csv'
 OUT_PNG    = CSV_PATH.parent / 'coordenadas_registro.png'
 
 IMG_WIDTH  = 256   # ancho real de la imagen AFM en px (eje X)
@@ -59,8 +74,11 @@ frames_all = df_valid['frame'].values
 cx_all     = df_valid['center_x'].values
 cy_all     = df_valid['center_y'].values
 
-print(f"  Detecciones válidas : {mask_ok.sum()}")
-print(f"  Frames corregidos   : {mask_fixed.sum()}")
+n_sin = len(df) - len(df_valid)
+print(f"  Detecciones sin corregir : {mask_ok.sum()}")
+print(f"  Frames suavizados        : {mask_fixed.sum()}")
+if n_sin:
+    print(f"  Frames sin deteccion     : {n_sin}  (excluidos de la figura)")
 
 # =================================================================
 # FIGURA — 3 paneles
@@ -70,7 +88,7 @@ fig, axes = plt.subplots(3, 1, figsize=(12, 10),
                          gridspec_kw={'height_ratios': [1, 1, 1.1]})
 fig.suptitle(
     'Coordenadas del Target Area detectadas por YOLO\n'
-    'con corrección de outliers por interpolación lineal',
+    'con suavizado de la variacion de deteccion',
     fontsize=13, fontweight='bold', y=0.99
 )
 
@@ -95,7 +113,7 @@ def plot_coord_panel(ax, vals, col, ylabel, title, img_dim):
             df_valid.loc[mask_fixed, 'frame'],
             df_valid.loc[mask_fixed, col],
             color=COLOR_FIXED, s=50, marker='D', zorder=4,
-            label='Valor corregido (interpolación lineal)'
+            label='Valor suavizado'
         )
 
     # ── escala ajustada al rango visible ────────────────────────
@@ -133,11 +151,13 @@ def plot_coord_panel(ax, vals, col, ylabel, title, img_dim):
     # rango visible: color primario
     inset.barh(0.5, vals.max() - vals.min(), left=vals.min(),
                height=0.6, color=COLOR_OK, alpha=0.75, align='center')
-    # recorte 80 px centrado en la media
+    # Recorte de 80 px situado en la posicion MEDIA de la serie. Con deriva
+    # el centro cambia frame a frame, asi que esta barra representa la
+    # cobertura tipica, no la de un frame concreto.
     media = np.mean(vals)
     inset.barh(0.5, CROP_HALF * 2, left=media - CROP_HALF,
                height=0.6, color='#F5A623', alpha=0.5, align='center',
-               label='Recorte 80 px')
+               label='Recorte 80 px (posicion media)')
     inset.set_xticks([0, img_dim // 2, img_dim])
     inset.set_xticklabels(['0', f'{img_dim//2}', f'{img_dim}'], fontsize=6)
     inset.set_yticks([])

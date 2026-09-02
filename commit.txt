@@ -1,0 +1,51 @@
+Feat: coordenadas crudas, figuras de verificacion y reporte de registro
+
+Calcular_Registro.py:
+- Conserva el float subpixel de YOLO en columnas center_x_raw y
+  center_y_raw. Antes solo sobrevivia el entero truncado, asi que no
+  habia forma de comparar la deteccion original contra la corregida.
+- El CSV pasa de 5 a 7 columnas. center_x y center_y conservan nombre,
+  posicion y valor: batch_multicanal y npy_multicanal no se ven
+  afectados y los recortes salen identicos.
+- Status 'interpolado' -> 'suavizado'. YOLO detecta en los 40 frames
+  con confianza 0.889-0.947: el filtro no corrige detecciones fallidas,
+  suprime la variacion de deteccion entre frames consecutivos. Los
+  mensajes de consola se ajustan a eso.
+
+Figuras de verificacion:
+- grafica_registro_crudo.py (nuevo): tres figuras con la deteccion
+  cruda, la truncada y la suavizada por eje, mas la trayectoria del
+  centro en el plano X-Y. Cuantifica la variacion media entre frames
+  consecutivos, que es lo que determina si dos recortes seguidos
+  cubren la misma region.
+- grafica_diff_recorte.py (nuevo): contrasta |f_n - f_n-1| del Canal 2
+  sobre la imagen completa contra el recorte del Target Area, para
+  verificar que el switching ocurre dentro de la region seleccionada.
+- grafica_coordenadas.py: titulo y leyenda corregidos, imports muertos
+  eliminados, conteos separados por tipo de estado.
+
+reporte_registro.py (nuevo):
+- Reporte PDF de 9 paginas que consolida las figuras anteriores y anade
+  la verificacion visual del recorte: ROI dibujado sobre la imagen
+  completa y tira temporal del mismo recorte a lo largo de la serie.
+- Guarda cada figura suelta en Resultados/reporte_registro/figuras/.
+- Las secciones cuyos datos falten se omiten con aviso.
+
+BASE_DIR:
+- Los seis scripts con rutas absolutas ahora derivan todo de una sola
+  constante. De 17 rutas repetidas a 7, una por archivo.
+
+README:
+- Esquema real del CSV, parametros que coinciden con el codigo, ruta
+  correcta del modelo (Target_Area_prep), maestria corregida.
+- Secciones nuevas para los scripts de figuras y el reporte.
+- Tabla de resultados de verificacion sobre la serie 21-60.
+- Aviso sobre la indexacion posicional cuando dos carpetas tienen
+  distinto numero de archivos.
+
+Resultados de verificacion (frames 21-60):
+  variacion entre frames X: 1.12 -> 0.08 px (93 % menos)
+  variacion entre frames Y: 0.46 -> 0.08 px (83 % menos)
+  deriva total: 2 px en X, 3 px en Y
+  diff completa vs recorte: r = 0.985 (media), r = 0.770 (maximo)
+  picos coincidentes en los frames 36-37 y 46-47
