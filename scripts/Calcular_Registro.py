@@ -54,6 +54,16 @@ OUTPUT_CSV = os.path.join(OUTPUT_DIR, 'coordenadas_registro.csv')
 FRAME_START  = 21
 FRAME_END    = 60
 FILE_PREFIX  = 'bifeo_training'
+
+# Digitos del numero de frame en el nombre de archivo (relleno con ceros).
+# Debe coincidir con FRAME_DIGITS de afm_a_gwy.py en AFM_ToolKit, que es
+# quien genera los nombres. Este script los RECONSTRUYE para buscar los
+# archivos, asi que un valor distinto no encontraria nada.
+#   0 -> bifeo_training_21    sin relleno (formato historico, hasta 99 frames)
+#   3 -> bifeo_training_021   hasta 999
+#   4 -> bifeo_training_0021  hasta 9999
+FRAME_DIGITS = 0
+
 CONFIDENCE   = 0.85
 IMG_WIDTH    = 256
 IMG_HEIGHT   = 128
@@ -124,7 +134,7 @@ detecciones = {}  # frame -> {'cx': int, 'cy': int, 'conf': float, 'status': str
 
 for frame in range(FRAME_START, FRAME_END + 1):
 
-    png_path = os.path.join(IMAGE_DIR, f"{FILE_PREFIX}_{frame}_Canal_1_prep.png")
+    png_path = os.path.join(IMAGE_DIR, f"{FILE_PREFIX}_{frame:0{FRAME_DIGITS}d}_Canal_1_prep.png")
 
     if not os.path.exists(png_path):
         print(f"{frame:<8} {'—':>10} {'—':>10} {'—':>8} sin_png")

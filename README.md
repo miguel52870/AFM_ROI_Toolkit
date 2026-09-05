@@ -179,6 +179,7 @@ OUTPUT_DIR  = '.../Resultados/registro'
 FRAME_START = 21
 FRAME_END   = 60
 FILE_PREFIX = 'bifeo_training'
+FRAME_DIGITS = 0          # relleno de ceros; ver "Numeración de frames"
 CONFIDENCE  = 0.85
 IMG_WIDTH   = 256
 IMG_HEIGHT  = 128
@@ -374,6 +375,41 @@ El sufijo del archivo cambia solo: `_recorte_80px` o `_recorte_80x64px`.
 
 ---
 
+## Numeración de frames
+
+Los tres scripts del pipeline **reconstruyen** el nombre de archivo a partir
+del número de frame para localizarlo en disco:
+
+```python
+f"{FILE_PREFIX}_{frame:0{FRAME_DIGITS}d}_Canal_1_prep.png"
+```
+
+Por eso `FRAME_DIGITS` debe coincidir con el valor usado en `afm_a_gwy.py`
+de **AFM_ToolKit**, que es quien genera los nombres. Si no coinciden, los
+scripts no encuentran ningún archivo y todos los frames salen como
+`sin_png`.
+
+| Valor | Nombre buscado | Cubre hasta |
+|---|---|---|
+| `0` | `bifeo_training_21_...` | 99 frames (formato histórico) |
+| `3` | `bifeo_training_021_...` | 999 frames |
+| `4` | `bifeo_training_0021_...` | 9999 frames |
+
+**Por qué existe.** Todo el pipeline accede a los archivos por posición en la
+lista ordenada alfabéticamente, y `sorted()` compara texto. Sin relleno,
+`bifeo_100` cae entre `bifeo_10` y `bifeo_11`, y la serie queda desordenada:
+la posición N deja de corresponder al frame N. Nada lanza un error.
+
+**Valor por defecto: `0`.** Reproduce el formato del dataset de la tesis
+(40 frames, 21–60), ya procesado. Para un dataset nuevo, usar `4` aquí y en
+`afm_a_gwy.py`.
+
+Las funciones que **extraen** el número del nombre —`re.search(r'_(\d+)_Canal', ...)`
+en los scripts de figuras— funcionan con o sin relleno, así que no requieren
+cambios.
+
+---
+
 ## Indexación posicional
 
 Los modelos predictivos acceden a los recortes por **posición** en la lista ordenada alfabéticamente (base 1), no por el número del nombre.
@@ -390,7 +426,7 @@ Esto preserva el orden cronológico siempre que los nombres sigan el patrón `bi
 
 **Frame sin diff.** El primer frame de la serie no tiene `_diff` porque no existe uno anterior. Los scripts lo omiten sin error.
 
-**Compatibilidad de nombres.** PNGs y NPYs deben seguir el patrón `bifeo_training_N_Canal_C_prep` para que los scripts emparejen los canales.
+**Compatibilidad de nombres.** PNGs y NPYs deben seguir el patrón `bifeo_training_N_Canal_C_prep` para que los scripts emparejen los canales. El relleno de ceros en `N` lo controla `FRAME_DIGITS`, que debe coincidir con el de `afm_a_gwy.py`.
 
 **Rutas absolutas.** Los scripts usan rutas absolutas de Windows en su sección de configuración. Ajustarlas antes de ejecutar en otra máquina.
 

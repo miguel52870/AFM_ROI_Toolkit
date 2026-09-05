@@ -63,6 +63,16 @@ CROP_WIDTH  = 80    # ancho del recorte en px (eje X)
 CROP_HEIGHT = 64    # alto del recorte en px  (eje Y)
 
 FILE_PREFIX = 'bifeo_training'
+
+# Digitos del numero de frame en el nombre de archivo (relleno con ceros).
+# Debe coincidir con FRAME_DIGITS de afm_a_gwy.py en AFM_ToolKit, que es
+# quien genera los nombres. Este script los RECONSTRUYE para buscar los
+# archivos, asi que un valor distinto no encontraria nada.
+#   0 -> bifeo_training_21    sin relleno (formato historico, hasta 99 frames)
+#   3 -> bifeo_training_021   hasta 999
+#   4 -> bifeo_training_0021  hasta 9999
+FRAME_DIGITS = 0
+
 IMG_WIDTH   = 256
 IMG_HEIGHT  = 128
 
@@ -136,16 +146,16 @@ for frame, reg in sorted(registro.items()):
 
     # --- Canales prep (C1, C2, C3) ---
     canales_prep = [
-        (os.path.join(NUMPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_1_prep.npy"), OUTPUT_DIR_C1, 1),
-        (os.path.join(NUMPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_2_prep.npy"), OUTPUT_DIR_C2, 2),
-        (os.path.join(NUMPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_3_prep.npy"), OUTPUT_DIR_C3, 3),
+        (os.path.join(NUMPY_DIR, f"{FILE_PREFIX}_{frame:0{FRAME_DIGITS}d}_Canal_1_prep.npy"), OUTPUT_DIR_C1, 1),
+        (os.path.join(NUMPY_DIR, f"{FILE_PREFIX}_{frame:0{FRAME_DIGITS}d}_Canal_2_prep.npy"), OUTPUT_DIR_C2, 2),
+        (os.path.join(NUMPY_DIR, f"{FILE_PREFIX}_{frame:0{FRAME_DIGITS}d}_Canal_3_prep.npy"), OUTPUT_DIR_C3, 3),
     ]
 
     # --- Diff ---
-    diff_path = os.path.join(DIFF_NPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_2_diff.npy")
+    diff_path = os.path.join(DIFF_NPY_DIR, f"{FILE_PREFIX}_{frame:0{FRAME_DIGITS}d}_Canal_2_diff.npy")
 
     # --- Mask ---
-    mask_path = os.path.join(MASK_NPY_DIR, f"{FILE_PREFIX}_{frame}_Canal_3_mask.npy")
+    mask_path = os.path.join(MASK_NPY_DIR, f"{FILE_PREFIX}_{frame:0{FRAME_DIGITS}d}_Canal_3_mask.npy")
 
     ok = 0
     errores = []
